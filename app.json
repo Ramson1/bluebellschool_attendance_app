@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Bluebell Attendance",
+    "slug": "bluebellschool-attendance-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.blackbox01.bluebellschoolattendanceapp",
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "supabaseUrl": "https://BLUEBELL_SUPABASE_REF_PLACEHOLDER.supabase.co",
+      "supabaseAnonKey": "BLUEBELL_SUPABASE_ANON_KEY_PLACEHOLDER",
+      "eas": {
+        "projectId": ""
+      }
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to scan student and staff ID cards at the school gate."
+        }
+      ]
+    ],
+    "owner": "black-box01"
+  }
+}
