@@ -27,8 +27,8 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "supabaseUrl": "https://BLUEBELL_SUPABASE_REF_PLACEHOLDER.supabase.co",
-      "supabaseAnonKey": "BLUEBELL_SUPABASE_ANON_KEY_PLACEHOLDER",
+      "supabaseUrl": "https://wjqjreiuahykuxyrugou.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqcWpyZWl1YWh5a3V4eXJ1Z291Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkxNjU5MzQsImV4cCI6MjEwNDc0MTkzNH0.u4tQfXPeafJJ15XHR4zdUgSLJX5bkHPOWCPI0QeOav8",
       "eas": {
         "projectId": ""
       }

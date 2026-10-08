@@ -8,7 +8,7 @@ import type { ScanTarget } from './qr';
 // DB row so a queued sign-in followed by a queued sign-out still resolve to the
 // right toggle at sync time. Client UUIDs keep double-syncs idempotent and the
 // unique(student_name,class,date) constraint dedupes on the server.
-const KEY = 'jmis_attendance_queue_v1';
+const KEY = 'bluebell_attendance_queue_v1';
 
 export type QueueStatus = 'queued' | 'syncing' | 'failed';
 export type QueueItem = {

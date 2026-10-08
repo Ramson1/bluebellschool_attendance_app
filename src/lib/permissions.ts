@@ -26,7 +26,7 @@ export async function resolveOperator(email: string | undefined | null): Promise
 
   const [{ data: devRows, error: devErr }, { data: adminRows, error: adminErr }] = await Promise.all([
     supabase.from('devauth').select('email'),
-    supabase.from('jmis_userauth').select('email'),
+    supabase.from('bluebell_userauth').select('email'),
   ]);
   // A transport failure must not look like "not authorised" — the caller
   // (App.tsx) catches this and falls back to the locally cached operator.
@@ -39,7 +39,7 @@ export async function resolveOperator(email: string | undefined | null): Promise
 
   // Fall back to the staff directory: non-academic + a gate designation.
   const { data: staff, error: staffErr } = await supabase
-    .from('jmis_staff')
+    .from('bluebell_staff')
     .select('id, name, designation, department, status, email')
     .ilike('email', em)
     .maybeSingle();

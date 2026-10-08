@@ -3,7 +3,7 @@ import type { ScanTarget } from './qr';
 
 // Sign-in / sign-out toggle logic — a faithful port of the web AttendanceTaker
 // so a scan of someone already inside signs them out, and the mobile + web apps
-// produce identical rows in jmis_attendance / jmis_staff_attendance.
+// produce identical rows in bluebell_attendance / bluebell_staff_attendance.
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
 export type Settings = { session: string; term: string };
@@ -42,7 +42,7 @@ async function applyStudent(
   // Resolve the numeric student id when it wasn't in the payload.
   if (sid == null) {
     const { data: stu } = await supabase
-      .from('jmis_student')
+      .from('bluebell_student')
       .select('id')
       .eq('name', name)
       .eq('class', cls)
@@ -51,7 +51,7 @@ async function applyStudent(
   }
 
   const { data: existing, error: qErr } = await supabase
-    .from('jmis_attendance')
+    .from('bluebell_attendance')
     .select('id, check_out_time')
     .eq('student_name', name)
     .eq('class', cls)
@@ -61,7 +61,7 @@ async function applyStudent(
 
   if (existing && !existing.check_out_time) {
     const { error } = await supabase
-      .from('jmis_attendance')
+      .from('bluebell_attendance')
       .update({ check_out_time: new Date().toISOString(), sign_out_method: method })
       .eq('id', existing.id);
     if (error) return { ok: false, action: 'out', name, message: '', error: error.message };
@@ -70,14 +70,14 @@ async function applyStudent(
 
   if (existing) {
     const { error } = await supabase
-      .from('jmis_attendance')
+      .from('bluebell_attendance')
       .update({ check_in_time: new Date().toISOString(), method, check_out_time: null, sign_out_method: null })
       .eq('id', existing.id);
     if (error) return { ok: false, action: 'again', name, message: '', error: error.message };
     return { ok: true, action: 'again', name, message: `${name} signed in again (${method})` };
   }
 
-  const { error } = await supabase.from('jmis_attendance').insert([
+  const { error } = await supabase.from('bluebell_attendance').insert([
     {
       student_id: sid ?? null,
       student_name: name,
@@ -92,7 +92,7 @@ async function applyStudent(
     if (isDuplicate(error)) {
       // Race with a web sign-in: re-read and sign that row out instead.
       const { data: row } = await supabase
-        .from('jmis_attendance')
+        .from('bluebell_attendance')
         .select('id, check_out_time')
         .eq('student_name', name)
         .eq('class', cls)
@@ -100,7 +100,7 @@ async function applyStudent(
         .maybeSingle();
       if (row && !row.check_out_time) {
         await supabase
-          .from('jmis_attendance')
+          .from('bluebell_attendance')
           .update({ check_out_time: new Date().toISOString(), sign_out_method: method })
           .eq('id', row.id);
         return { ok: true, action: 'out', name, message: `${name} signed out (${method})` };
@@ -123,7 +123,7 @@ async function applyStaff(
   // Resolve the staff uuid from the directory when the payload omitted it.
   if (!staffId) {
     const { data: stu } = await supabase
-      .from('jmis_staff')
+      .from('bluebell_staff')
       .select('id')
       .ilike('name', name)
       .maybeSingle();
@@ -134,7 +134,7 @@ async function applyStaff(
   }
 
   const { data: existing, error: qErr } = await supabase
-    .from('jmis_staff_attendance')
+    .from('bluebell_staff_attendance')
     .select('id, check_out_time')
     .eq('staff_id', staffId)
     .eq('date', date)
@@ -143,7 +143,7 @@ async function applyStaff(
 
   if (existing && !existing.check_out_time) {
     const { error } = await supabase
-      .from('jmis_staff_attendance')
+      .from('bluebell_staff_attendance')
       .update({ check_out_time: new Date().toISOString(), sign_out_method: method })
       .eq('id', existing.id);
     if (error) return { ok: false, action: 'out', name, message: '', error: error.message };
@@ -152,14 +152,14 @@ async function applyStaff(
 
   if (existing) {
     const { error } = await supabase
-      .from('jmis_staff_attendance')
+      .from('bluebell_staff_attendance')
       .update({ check_in_time: new Date().toISOString(), method, check_out_time: null, sign_out_method: null })
       .eq('id', existing.id);
     if (error) return { ok: false, action: 'again', name, message: '', error: error.message };
     return { ok: true, action: 'again', name, message: `${name} signed in again (${method})` };
   }
 
-  const { error } = await supabase.from('jmis_staff_attendance').insert([
+  const { error } = await supabase.from('bluebell_staff_attendance').insert([
     { staff_id: staffId, staff_name: name, role: target.role || 'Staff', date, method },
   ]);
   if (error) {
@@ -171,6 +171,6 @@ async function applyStaff(
 
 // Shared settings row (session + term) stamped onto new attendance records.
 export async function fetchSettings(): Promise<Settings> {
-  const { data } = await supabase.from('jmis_settings').select('session, term').limit(1);
+  const { data } = await supabase.from('bluebell_settings').select('session, term').limit(1);
   return { session: data?.[0]?.session || '', term: data?.[0]?.term || '' };
 }

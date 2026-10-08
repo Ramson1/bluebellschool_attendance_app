@@ -156,14 +156,14 @@ export default function AttendanceScreen({
     try {
       if (mode === 'student') {
         const { data } = await supabase
-          .from('jmis_student')
+          .from('bluebell_student')
           .select('id, name, class, token, passport')
           .ilike('name', `%${q}%`)
           .limit(20);
         setSearchResults((data ?? []).map((r) => ({ id: r.id, name: r.name, class: r.class, token: r.token, passport: r.passport })));
       } else {
         const { data } = await supabase
-          .from('jmis_staff')
+          .from('bluebell_staff')
           .select('id, name')
           .ilike('name', `%${q}%`)
           .limit(20);

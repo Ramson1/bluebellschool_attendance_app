@@ -12,9 +12,9 @@ import type { Operator } from './permissions';
 //    is allowed to do without hitting the database.
 //  - When connectivity returns, restoreSession() re-authenticates with
 //    Supabase silently so queued scans can sync under the user's own session.
-const CREDS_KEY = 'jmis_offline_creds_v1';
-const OP_CACHE_KEY = 'jmis_operator_cache_v1';
-const CURRENT_EMAIL_KEY = 'jmis_offline_current_email_v1';
+const CREDS_KEY = 'bluebell_offline_creds_v1';
+const OP_CACHE_KEY = 'bluebell_operator_cache_v1';
+const CURRENT_EMAIL_KEY = 'bluebell_offline_current_email_v1';
 
 const norm = (v: string): string => v.toLowerCase().trim();
 
