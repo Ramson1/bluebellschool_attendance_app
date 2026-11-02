@@ -35,19 +35,33 @@ async function applyStudent(
   settings: Settings,
   date: string,
 ): Promise<ScanResult> {
-  const { name, class: cls } = target;
+  let name = target.name;
+  let cls = target.class;
   let sid = target.sid != null ? Number(target.sid) : undefined;
   if (Number.isNaN(sid)) sid = undefined;
 
-  // Resolve the numeric student id when it wasn't in the payload.
-  if (sid == null) {
+  // Printed cards carry only {sid,name}, so the class (and a missing id/name)
+  // is resolved from the roster before the attendance lookups/insert below —
+  // they all key on (student_name, class) and class cannot be left undefined.
+  if (sid != null && !cls) {
     const { data: stu } = await supabase
       .from('bluebell_student')
-      .select('id')
-      .eq('name', name)
-      .eq('class', cls)
+      .select('name, class')
+      .eq('id', sid)
       .maybeSingle();
-    sid = stu?.id ?? undefined;
+    if (!stu) {
+      return { ok: false, action: 'unknown', name, message: '', error: `Student id ${sid} is not in the roster` };
+    }
+    name = stu.name;
+    cls = stu.class;
+  } else if (sid == null) {
+    const base = supabase.from('bluebell_student').select('id, name, class').eq('name', name);
+    const { data: stu } = cls ? await base.eq('class', cls).maybeSingle() : await base.maybeSingle();
+    if (!stu) {
+      return { ok: false, action: 'unknown', name, message: '', error: `Student "${name}" is not in the roster` };
+    }
+    sid = stu.id;
+    cls = stu.class;
   }
 
   const { data: existing, error: qErr } = await supabase

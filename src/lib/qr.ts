@@ -1,23 +1,25 @@
-// QR payloads are JSON. Student ID cards carry {sid,name,class}; staff cards
-// carry {staffId,name,role}. One scanner handles both by auto-detecting the
-// shape. A tolerant pipe form (sid|name|class) is also accepted for legacy
-// cards, mirroring the web AttendanceTaker parser.
+// QR payloads are JSON. Every printed card (student AND staff) carries the
+// compact {sid,name}; a few legacy student cards also include class, and
+// staff cards may carry staffId/role. One scanner handles both, but because
+// the {sid,name} form is identical for students and staff the operator's
+// active mode (modeHint) decides how an ambiguous payload is interpreted.
+// A tolerant pipe form is also accepted, mirroring the web AttendanceTaker.
 export type ScanTarget =
-  | { kind: 'student'; sid?: string | number; name: string; class: string }
+  | { kind: 'student'; sid?: string | number; name: string; class?: string }
   | { kind: 'staff'; staffId?: string; name: string; role?: string };
 
-export function parseQrPayload(text: string): ScanTarget | null {
+export function parseQrPayload(text: string, modeHint?: 'student' | 'staff'): ScanTarget | null {
   const raw = (text || '').trim();
   if (!raw) return null;
 
   try {
     const obj = JSON.parse(raw);
     if (obj && typeof obj === 'object') {
-      // Student card: has a class (and typically sid/name).
+      // Explicit student card: carries a class.
       if (obj.name && obj.class) {
         return { kind: 'student', sid: obj.sid, name: String(obj.name), class: String(obj.class) };
       }
-      // Staff card: has staffId or role but no class.
+      // Explicit staff card: has staffId or role but no class.
       if (obj.staffId || obj.role) {
         return {
           kind: 'staff',
@@ -26,10 +28,19 @@ export function parseQrPayload(text: string): ScanTarget | null {
           role: obj.role ? String(obj.role) : undefined,
         };
       }
-      // A JSON object with a name but no discriminator → assume student-less
-      // staff record; treat as staff with just a name.
+      // Ambiguous {sid,name} — the form BOTH card types actually print. Use the
+      // active mode to classify; class (if any) stays for a roster resolution.
       if (obj.name) {
-        return { kind: 'staff', staffId: obj.sid ? String(obj.sid) : undefined, name: String(obj.name) };
+        if (modeHint === 'staff') {
+          const id = obj.staffId ?? obj.sid;
+          return { kind: 'staff', staffId: id != null ? String(id) : undefined, name: String(obj.name) };
+        }
+        return {
+          kind: 'student',
+          sid: obj.sid,
+          name: String(obj.name),
+          class: obj.class != null ? String(obj.class) : undefined,
+        };
       }
     }
   } catch {
@@ -41,7 +52,9 @@ export function parseQrPayload(text: string): ScanTarget | null {
     return { kind: 'student', sid: parts[0], name: parts[1], class: parts.slice(2).join('|') };
   }
   if (parts.length === 2) {
-    return { kind: 'staff', staffId: parts[0], name: parts[1] };
+    return modeHint === 'student'
+      ? { kind: 'student', sid: parts[0], name: parts[1] }
+      : { kind: 'staff', staffId: parts[0], name: parts[1] };
   }
   return null;
 }

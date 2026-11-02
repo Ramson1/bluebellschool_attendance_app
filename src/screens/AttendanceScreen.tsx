@@ -138,7 +138,7 @@ export default function AttendanceScreen({
     const now = Date.now();
     if (text === lastScan.current.text && now - lastScan.current.at < 3000) return; // debounce
     lastScan.current = { text, at: now };
-    const parsed = parseQrPayload(text);
+    const parsed = parseQrPayload(text, mode);
     if (!parsed) {
       pushLog({ key: `u-${now}`, text: 'Unrecognized QR code', tone: 'err' });
       return;
