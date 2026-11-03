@@ -5,8 +5,8 @@
 // active mode (modeHint) decides how an ambiguous payload is interpreted.
 // A tolerant pipe form is also accepted, mirroring the web AttendanceTaker.
 export type ScanTarget =
-  | { kind: 'student'; sid?: string | number; name: string; class?: string }
-  | { kind: 'staff'; staffId?: string; name: string; role?: string };
+  | { kind: 'student'; sid?: string | number; name: string; class?: string; passport?: string | null; direction?: 'in' | 'out' }
+  | { kind: 'staff'; staffId?: string; name: string; role?: string; passport?: string | null; direction?: 'in' | 'out' };
 
 export function parseQrPayload(text: string, modeHint?: 'student' | 'staff'): ScanTarget | null {
   const raw = (text || '').trim();

@@ -18,9 +18,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../lib/supabase';
-import { studentPhotoUrl } from '../lib/photo';
+import { studentPhotoUrl, staffPhotoUrl } from '../lib/photo';
 import { parseQrPayload, type ScanTarget } from '../lib/qr';
 import { applyScan, fetchSettings, type Settings } from '../lib/attendance';
+import { initSound, loadSoundPref, playBeep, saveSoundPref } from '../lib/sound';
 import {
   getQueue,
   enqueue,
@@ -34,7 +35,7 @@ import { initNotifications, syncUnsyncedNotification } from '../lib/notification
 import type { Operator } from '../lib/permissions';
 
 type Mode = 'student' | 'staff';
-type Entry = { key: string; text: string; tone: 'ok' | 'warn' | 'err' };
+type Entry = { key: string; text: string; tone: 'ok' | 'warn' | 'err'; passport?: string | null };
 
 export default function AttendanceScreen({
   operator,
@@ -57,12 +58,21 @@ export default function AttendanceScreen({
   // manual entry
   const [manualName, setManualName] = useState('');
   const [manualClass, setManualClass] = useState('');
-  const [searchResults, setSearchResults] = useState<{ id: string | number; name: string; class?: string; token?: string; passport?: string }[]>([]);
+  const [searchResults, setSearchResults] = useState<{ id: string | number; name: string; class?: string; token?: string; passport?: string | null }[]>([]);
   const [searching, setSearching] = useState(false);
   // student identity confirmation: after picking a name the operator must enter
   // the student's token, which is checked against the record before check-in.
-  const [picked, setPicked] = useState<{ id: string | number; name: string; class?: string; token?: string; passport?: string } | null>(null);
+  const [picked, setPicked] = useState<{ id: string | number; name: string; class?: string; token?: string; passport?: string | null } | null>(null);
   const [manualToken, setManualToken] = useState('');
+  // Full-screen passport viewer: tapping a photo in the recent list
+  // enlarges it over the screen with a close button at the top right.
+  const [viewer, setViewer] = useState<{ open: boolean; src: string; name: string }>({ open: false, src: '', name: '' });
+
+  // Attendance type picked by the operator: a scan only ever performs the
+  // selected action, so check-ins can't accidentally sign kids out.
+  const [direction, setDirection] = useState<'in' | 'out'>('in');
+  // Loud confirmation chirp on success; toggle persisted on the device.
+  const [soundOn, setSoundOn] = useState(true);
 
   const refreshQueue = useCallback(async () => {
     const items = await getQueue();
@@ -82,6 +92,13 @@ export default function AttendanceScreen({
     });
     return () => unsub();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load the sound preference once and pre-create the audio player so the
+  // first scan is not delayed by setup.
+  useEffect(() => {
+    void loadSoundPref().then(setSoundOn);
+    void initSound();
   }, []);
 
   const pushLog = (e: Entry) => setLog((l) => [e, ...l].slice(0, 40));
@@ -109,15 +126,19 @@ export default function AttendanceScreen({
   const handleScan = useCallback(
     async (target: ScanTarget, method: 'qr' | 'manual') => {
       const label = target.kind === 'student' ? target.name : target.name;
+      // Stamp the chosen attendance type on the target so live scans and
+      // offline-queued replays both respect it.
+      const t: ScanTarget = { ...target, direction };
       if (online) {
-        const res = await applyScan(target, method, settings);
+        const res = await applyScan(t, method, settings);
         if (res.ok) {
-          pushLog({ key: `${method}-${Date.now()}`, text: res.message, tone: target.kind === mode ? 'ok' : 'ok' });
+          if (soundOn) playBeep();
+          pushLog({ key: `${method}-${Date.now()}`, text: res.message, tone: 'ok', passport: res.passport || t.passport || null });
           return;
         }
         const networkish = /network|failed to fetch|timeout/i.test(res.error || '');
         if (networkish) {
-          await enqueue(target, method);
+          await enqueue(t, method);
           await refreshQueue();
           pushLog({ key: `q-${Date.now()}`, text: `Saved on device: ${label}`, tone: 'warn' });
           setOnline(false);
@@ -125,12 +146,12 @@ export default function AttendanceScreen({
         }
         pushLog({ key: `e-${Date.now()}`, text: `${label}: ${res.error || 'failed'}`, tone: 'err' });
       } else {
-        await enqueue(target, method);
+        await enqueue(t, method);
         await refreshQueue();
         pushLog({ key: `q-${Date.now()}`, text: `Saved on device: ${label}`, tone: 'warn' });
       }
     },
-    [online, settings, mode, refreshQueue],
+    [online, settings, mode, direction, soundOn, refreshQueue],
   );
 
   const onBarcode = (scanning: { data: string }) => {
@@ -164,10 +185,10 @@ export default function AttendanceScreen({
       } else {
         const { data } = await supabase
           .from('bluebell_staff')
-          .select('id, name')
+          .select('id, name, profile_pic')
           .ilike('name', `%${q}%`)
           .limit(20);
-        setSearchResults((data ?? []).map((r) => ({ id: r.id, name: r.name })));
+        setSearchResults((data ?? []).map((r) => ({ id: r.id, name: r.name, passport: staffPhotoUrl(r.profile_pic) })));
       }
     } finally {
       setSearching(false);
@@ -184,7 +205,7 @@ export default function AttendanceScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manualName, mode, tab]);
 
-  const pickManual = (row: { id: string | number; name: string; class?: string; token?: string; passport?: string }) => {
+  const pickManual = (row: { id: string | number; name: string; class?: string; token?: string; passport?: string | null }) => {
     if (mode === 'student') {
       // Don't check in yet — ask the student to confirm their token first.
       setPicked(row);
@@ -193,7 +214,7 @@ export default function AttendanceScreen({
       setManualName(row.name);
       return;
     }
-    const target: ScanTarget = { kind: 'staff', staffId: String(row.id), name: row.name };
+    const target: ScanTarget = { kind: 'staff', staffId: String(row.id), name: row.name, passport: row.passport ?? null };
     handleScan(target, 'manual');
     setManualName('');
     setSearchResults([]);
@@ -212,7 +233,7 @@ export default function AttendanceScreen({
       setManualToken('');
       return;
     }
-    const target: ScanTarget = { kind: 'student', sid: picked.id, name: picked.name, class: picked.class || manualClass };
+    const target: ScanTarget = { kind: 'student', sid: picked.id, name: picked.name, class: picked.class || manualClass, passport: picked.passport ?? null };
     handleScan(target, 'manual');
     setPicked(null);
     setManualToken('');
@@ -232,6 +253,13 @@ export default function AttendanceScreen({
       { text: 'Cancel', style: 'cancel' },
       { text: 'Upload', onPress: runSync },
     ]);
+  };
+
+  const toggleSound = () => {
+    const v = !soundOn;
+    setSoundOn(v);
+    void saveSoundPref(v);
+    if (v) playBeep(); // let the operator hear it is back on
   };
 
   const banner = online
@@ -265,9 +293,14 @@ export default function AttendanceScreen({
             {settings.session ? ` · ${settings.session}` : ''}{settings.term ? ` · ${settings.term}` : ''}
           </Text>
         </View>
-        <TouchableOpacity style={styles.signout} onPress={onSignOut}>
-          <Text style={styles.signoutText}>Sign out</Text>
-        </TouchableOpacity>
+        <View style={styles.headBtns}>
+          <TouchableOpacity style={styles.soundBtn} onPress={toggleSound} accessibilityLabel="Toggle scan sound">
+            <Text style={styles.soundBtnText}>{soundOn ? 'Sound on' : 'Sound off'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.signout} onPress={onSignOut}>
+            <Text style={styles.signoutText}>Sign out</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* status banner */}
@@ -287,6 +320,21 @@ export default function AttendanceScreen({
           >
             <Text style={[styles.segmentText, mode === m && styles.segmentTextActive]}>
               {m === 'student' ? 'Student' : 'Staff'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* attendance type: scans only perform the selected action */}
+      <View style={styles.dirRow}>
+        {(['in', 'out'] as const).map((d) => (
+          <TouchableOpacity
+            key={d}
+            style={[styles.dirBtn, direction === d && (d === 'in' ? styles.dirInActive : styles.dirOutActive)]}
+            onPress={() => setDirection(d)}
+          >
+            <Text style={[styles.dirText, direction === d && styles.dirTextActive]}>
+              {d === 'in' ? 'Check In to School' : 'Check Out from School'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -394,9 +442,16 @@ export default function AttendanceScreen({
           keyExtractor={(e) => e.key}
           ListEmptyComponent={<Text style={styles.hint}>Scans and sign-ins will appear here.</Text>}
           renderItem={({ item }) => (
-            <Text style={[styles.logText, item.tone === 'err' ? styles.logErr : item.tone === 'warn' ? styles.logWarn : styles.logOk]}>
-              • {item.text}
-            </Text>
+            <View style={styles.logRow}>
+              {item.passport ? (
+                <TouchableOpacity onPress={() => setViewer({ open: true, src: item.passport as string, name: item.text })}>
+                  <Avatar passport={item.passport} size={34} />
+                </TouchableOpacity>
+              ) : null}
+              <Text style={[styles.logText, item.tone === 'err' ? styles.logErr : item.tone === 'warn' ? styles.logWarn : styles.logOk]}>
+                • {item.text}
+              </Text>
+            </View>
           )}
           style={styles.logList}
         />
@@ -415,6 +470,21 @@ export default function AttendanceScreen({
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Full-screen passport viewer */}
+      <Modal visible={viewer.open} transparent animationType="fade" onRequestClose={() => setViewer({ open: false, src: '', name: '' })}>
+        <View style={styles.viewerBackdrop}>
+          <TouchableOpacity
+            style={styles.viewerClose}
+            onPress={() => setViewer({ open: false, src: '', name: '' })}
+            accessibilityLabel="Close photo"
+          >
+            <Text style={styles.viewerCloseText}>✕</Text>
+          </TouchableOpacity>
+          <Image source={{ uri: viewer.src }} style={styles.viewerImage} resizeMode="contain" />
+          {viewer.name ? <Text style={styles.viewerName}>{viewer.name}</Text> : null}
+        </View>
+      </Modal>
 
       <QueueModal
         visible={queueModal}
@@ -543,7 +613,8 @@ const styles = StyleSheet.create({
   logWrap: { flex: 1, marginTop: 14, paddingHorizontal: 16 },
   sectionTitle: { fontWeight: '800', color: '#011b97', marginBottom: 6, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5 },
   logList: { flex: 1 },
-  logText: { fontSize: 14, paddingVertical: 4 },
+  logRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
+  logText: { flex: 1, fontSize: 14 },
   logOk: { color: '#1e7e34' },
   logWarn: { color: '#a5670a' },
   logErr: { color: '#c0392b' },
@@ -562,4 +633,18 @@ const styles = StyleSheet.create({
   queueMeta: { color: '#6b7280', fontSize: 12 },
   queueRemove: { color: '#c0392b', fontWeight: '800', paddingHorizontal: 8 },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 14 },
+  headBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  soundBtn: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#d7dde7', backgroundColor: '#fff' },
+  soundBtnText: { color: '#444', fontWeight: '700', fontSize: 11.5 },
+  dirRow: { flexDirection: 'row', gap: 8, marginHorizontal: 16, marginTop: 10 },
+  dirBtn: { flex: 1, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: '#d7dde7', backgroundColor: '#fff', alignItems: 'center' },
+  dirText: { fontWeight: '700', color: '#4b5563', fontSize: 12.5 },
+  dirTextActive: { color: '#fff' },
+  dirInActive: { backgroundColor: '#1e7e34', borderColor: '#1e7e34' },
+  dirOutActive: { backgroundColor: '#a5670a', borderColor: '#a5670a' },
+  viewerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.88)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  viewerClose: { position: 'absolute', top: 48, right: 20, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  viewerCloseText: { color: '#fff', fontSize: 20, fontWeight: '800' },
+  viewerImage: { width: '100%', maxWidth: 420, aspectRatio: 3 / 4, borderRadius: 16, backgroundColor: '#fff' },
+  viewerName: { color: '#fff', fontWeight: '800', fontSize: 15, marginTop: 14, textAlign: 'center' },
 });

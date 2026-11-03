@@ -39,7 +39,8 @@
         {
           "cameraPermission": "Allow $(PRODUCT_NAME) to scan student and staff ID cards at the school gate."
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "owner": "black-box01"
   }
