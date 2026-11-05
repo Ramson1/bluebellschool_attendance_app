@@ -105,7 +105,7 @@ export default function LoginScreen({
       style={styles.wrap}
     >
       <View style={styles.card}>
-        <Text style={styles.brand}>BluebellSchool</Text>
+        <Text style={styles.brand}>Black-Box Institution</Text>
         <Text style={styles.title}>Attendance Scanner</Text>
         <Text style={styles.subtitle}>Sign in to check students and staff in or out at the gate.</Text>
 

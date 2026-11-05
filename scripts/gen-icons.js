@@ -1,4 +1,4 @@
-// One-off icon generator for the Bluebell Attendance app.
+// One-off icon generator for the Black-Box Attendance app.
 // Builds the Android adaptive icon set + iOS/legacy icon + splash + favicon
 // from the school crest (bluebellschool/public/logo.png). Run: `node scripts/gen-icons.js`
 // Uses only pngjs (already present in node_modules). Safe to delete after use.
